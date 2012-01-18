@@ -1,5 +1,7 @@
 using System;
-using System.Xml.
+using System.Xml.Linq;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace pws
 {
@@ -7,41 +9,79 @@ namespace pws
 	{
 		public static void Main (string[] args)
 		{
-			var Patents = new System.Collections.Generic.List<Patent>();
-			foreach(string xmlstring in System.IO.Directory.GetFiles ("/home/edo/pws/res3"))
+			var ns = XNamespace.Get ("http://www.epo.org/exchange");
+			var opsns = XNamespace.Get ("http://ops.epo.org");
+			
+			//Search patents
+			var docs = new System.Collections.Generic.List<string> ();
 			{
-				var sr = new System.IO.StreamReader(xmlstring);
-				Patents.Add (new Patent(sr.ReadToEnd ()));
-				sr.Close ();
+				string query = "milking%20AND%20robot";
+				int lastchecked = 0;
+				int total = 0;
+				int resultsperpage = 100;
+				do {
+					var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create (
+						"http://ops.epo.org/2.6.2/rest-services/published-data/search/abstract/?q=" + query + "&Range=" + (lastchecked + 1) + "-" + (lastchecked + resultsperpage));
+					var res = req.GetResponse ();
+					var rdr = new System.IO.StreamReader (res.GetResponseStream ());
+					string xmldoc = rdr.ReadToEnd ();
+					XDocument results = XDocument.Parse (xmldoc);
+					total = int.Parse (results.Root.Descendants (opsns + "biblio-search").Single ().Attribute ("total-result-count").Value);
+					lastchecked = lastchecked + resultsperpage;
+					foreach (XElement docid in
+					         results.Root.Descendants (ns+"document-id")
+					         .Where (x=>x.Attribute ("document-id-type").Value == "epodoc")) {
+						docs.Add (docid.Element (ns + "doc-number").Value);
+					}
+					Console.WriteLine ("total=" + total + " and lastchecked=" + lastchecked);
+				} while(lastchecked < total);
 			}
-			foreach(Patent patent in Patents)
-			{
-				Console.WriteLine (patent.xml);
-			}
-		}
-	}
-	struct Patent
-	{
-		public Patent(string xmlstring)
-		{
-			var tr = new System.IO.TextReader();
-			var xr = new System.Xml.XmlReader();
-			this.xml = xr.
-		}
-		private System.Xml.XmlDocument xml;
-		public string pubdocdb
-		{
-			get
-			{
+			
+			//retrieve and make pdf
+			foreach (string doc in docs) {
+				try {
+					Console.WriteLine ("Making " + doc);
+					//retrieve images xml
+					XDocument imgdoc;
+					{
+						string str = "http://ops.epo.org/2.6.2/rest-services/published-data/publication/epodoc/"
+							+ doc + "/images";
+						var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create (str);
+						req.Accept = "application/ops+xml";
+						var res = req.GetResponse ().GetResponseStream ();
+						var rdr = new System.IO.StreamReader (res, true);
+						imgdoc = XDocument.Parse (rdr.ReadToEnd ());
+					}
+					Console.WriteLine ("imgdoc: " + imgdoc.ToString().Length);
 				
-			}
-		}
-		public string fulltext
-		{
-			get
-			{
-				
-			}
+					//retrieve every page
+					var pageslist = new System.Collections.Generic.List<System.IO.Stream> ();
+					{
+						XElement docel = imgdoc.Root.Descendants (opsns + "document-instance")
+							.Single (x => x.Attribute ("desc").Value == "FullDocument");
+						string pdflink = "http://ops.epo.org/2.6.2/rest-services/" + docel.Attribute ("link").Value;
+						int pdfpages = int.Parse (docel.Attribute ("number-of-pages").Value);
+					
+						for (int i = 1; i <= pdfpages; i++) {
+							var str = pdflink + "&Range=" + i;
+							Console.WriteLine (str);
+							var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create (str);
+							req.Accept = "application/pdf";
+							var res = req.GetResponse ();
+							pageslist.Add (res.GetResponseStream ());
+						}
+					}
+				} catch (Exception ex) {
+					Console.WriteLine (doc + " failed: ");
+					if (ex is System.Net.WebException) {
+						Console.WriteLine (ex.ToString ());
+					}
+				}
+			}//foreach
+			
+			
+			
+			
 		}
 	}
 }
