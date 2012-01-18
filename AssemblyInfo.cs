@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 [assembly: AssemblyTitle("pws")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("Edo Mangelaars")]
 [assembly: AssemblyProduct("")]
 [assembly: AssemblyCopyright("edo")]
 [assembly: AssemblyTrademark("")]
